@@ -1,0 +1,12 @@
+# このファイルをコピーして terraform.tfvars を作成し、値を埋めてください
+# terraform.tfvars は .gitignore に含まれているため Git には push されません
+
+aws_region   = "ap-northeast-1"
+project_name = "order-mgmt"
+env          = "dev"
+
+db_password = "your-strong-password-here"
+
+# terraform apply 後に ECR の URL を入力する
+order_service_image        = "123456789012.dkr.ecr.ap-northeast-1.amazonaws.com/order-mgmt-dev-order-service:latest"
+notification_service_image = "123456789012.dkr.ecr.ap-northeast-1.amazonaws.com/order-mgmt-dev-notification-service:latest"
