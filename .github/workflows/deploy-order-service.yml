@@ -1,0 +1,94 @@
+name: Deploy order-service
+
+# services/order-service に変更があった場合のみ発火
+on:
+  push:
+    branches: [main]
+    paths:
+      - "services/order-service/**"
+      - ".github/workflows/deploy-order-service.yml"
+
+env:
+  AWS_REGION:      ap-northeast-1
+  ECR_REPO:        order-mgmt-dev-order-service
+  ECS_CLUSTER:     order-mgmt-dev-cluster
+  ECS_SERVICE:     order-mgmt-dev-order-service
+  CONTAINER_NAME:  order-service
+
+jobs:
+  build-and-deploy:
+    name: Build & Deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      # ─────────────────────────────────────────
+      # 1. ソースコード取得
+      # ─────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ─────────────────────────────────────────
+      # 2. AWS 認証（GitHub Secrets に登録した IAM 認証情報を使用）
+      # ─────────────────────────────────────────
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+
+      # ─────────────────────────────────────────
+      # 3. ECR ログイン
+      # ─────────────────────────────────────────
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # ─────────────────────────────────────────
+      # 4. Docker ビルド & ECR プッシュ
+      #    タグ: latest + コミットSHA（ロールバック可能にする）
+      # ─────────────────────────────────────────
+      - name: Build and push Docker image
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG:    ${{ github.sha }}
+        run: |
+          docker build \
+            -t $ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG \
+            -t $ECR_REGISTRY/$ECR_REPO:latest \
+            services/order-service/
+
+          docker push $ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPO:latest
+
+          echo "image=$ECR_REGISTRY/$ECR_REPO:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+      # ─────────────────────────────────────────
+      # 5. タスク定義の image を新しいものに差し替え
+      # ─────────────────────────────────────────
+      - name: Download current task definition
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition order-mgmt-dev-order-service \
+            --query taskDefinition \
+            > task-definition.json
+
+      - name: Update image in task definition
+        id: task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-definition.json
+          container-name:  ${{ env.CONTAINER_NAME }}
+          image:           ${{ steps.build-image.outputs.image }}
+
+      # ─────────────────────────────────────────
+      # 6. ECS サービスをデプロイ（ローリングアップデート）
+      # ─────────────────────────────────────────
+      - name: Deploy to ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition:  ${{ steps.task-def.outputs.task-definition }}
+          service:          ${{ env.ECS_SERVICE }}
+          cluster:          ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
