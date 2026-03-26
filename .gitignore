@@ -1,0 +1,35 @@
+# Maven
+target/
+*.class
+*.jar
+*.war
+
+# .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+
+# Terraform
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.backup
+terraform/.terraform.lock.hcl
+
+# Environment
+.env
+.env.local
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
